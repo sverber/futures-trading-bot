@@ -1,0 +1,8 @@
+scikit-learn
+matplotlib
+polars
+pandas
+python-kraken-sdk
+pyarrow
+xgboost
+requests
