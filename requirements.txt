@@ -1,3 +1,5 @@
+numpy
+joblib
 scikit-learn
 matplotlib
 polars

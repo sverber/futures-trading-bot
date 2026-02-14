@@ -149,7 +149,7 @@ class VisualizationBot:
     def plot_all(df: pl.DataFrame, symbol: str, lookback: int = 100,
                  filename: str = "../../plots/bot_status.png"):
         """
-        Integrated view: Price/BBands/Levels, Z-Scores, and Momentum.
+        Integrated view: Price/BBands/Levels, BB Distances, Z-Scores, and Momentum.
         This provides a complete 'snapshot' for analyzing potential bounces.
         """
         # 1. Filter and Prepare Data
@@ -160,19 +160,36 @@ class VisualizationBot:
 
         pdf = df_plot.to_pandas()
 
-        # 2. Setup Figure (3 Rows)
-        # Height ratios: Price plot is the largest, indicators are smaller
-        fig, (ax_p, ax_z, ax_m) = plt.subplots(3, 1, figsize=(15, 14), sharex=True,
-                                               gridspec_kw={'height_ratios': [3, 1.5, 1]})
+        # 2. Setup Figure (4 Rows)
+        # We unpack 4 axes now: Price, Distance, Z-Score, Momentum
+        fig, (ax_p, ax_d, ax_z, ax_m) = plt.subplots(
+            4, 1, figsize=(15, 18), sharex=True,
+            gridspec_kw={'height_ratios': [3, 1, 1.2, 1]}
+        )
 
         # --- Subplot 1: Price Action & Bands ---
         ax_p.plot(pdf["timestamp"], pdf["close_1m"], label="Price", color="black", alpha=0.8, lw=1.5)
 
         # Bollinger Bands
-        if "bb_upper" in pdf.columns and "bb_lower" in pdf.columns:
+        if "bb_upper" in pdf.columns and "bb_middle" in pdf.columns and "bb_lower" in pdf.columns:
             ax_p.plot(pdf["timestamp"], pdf["bb_upper"], color="green", ls="--", alpha=0.4)
+            ax_p.plot(pdf["timestamp"], pdf["bb_middle"], color="orange", ls="--", alpha=0.4)
             ax_p.plot(pdf["timestamp"], pdf["bb_lower"], color="red", ls="--", alpha=0.4)
             ax_p.fill_between(pdf["timestamp"], pdf["bb_upper"], pdf["bb_lower"], color="gray", alpha=0.05)
+
+        # Bollinger Bands Touches (-1, 0, 1)
+        if "bb_touch_signal" in pdf.columns:
+            upper_touches = pdf[pdf["bb_touch_signal"] == 1]
+            lower_touches = pdf[pdf["bb_touch_signal"] == -1]
+
+            if not upper_touches.empty:
+                ax_p.scatter(upper_touches["timestamp"], upper_touches["close_1m"],
+                             color="deeppink", edgecolors="black", marker="o", s=60,
+                             label="BB Upper Touch", zorder=4)
+            if not lower_touches.empty:
+                ax_p.scatter(lower_touches["timestamp"], lower_touches["close_1m"],
+                             color="lime", edgecolors="black", marker="o", s=60,
+                             label="BB Lower Touch", zorder=4)
 
         # Support/Resistance
         if "swing_sup_level" in pdf.columns:
@@ -180,39 +197,54 @@ class VisualizationBot:
         if "swing_res_level" in pdf.columns:
             ax_p.plot(pdf["timestamp"], pdf["swing_res_level"], label="Resistance", color="orange", ls=":", alpha=0.6)
 
-        # Signals
+        # Strategy Signals
         if "signal" in pdf.columns:
             buys = pdf[pdf["signal"] == 1]
             sells = pdf[pdf["signal"] == -1]
             if not buys.empty:
-                ax_p.scatter(buys["timestamp"], buys["close_1m"], marker="^", color="green", s=100, label="Buy",
+                ax_p.scatter(buys["timestamp"], buys["close_1m"], marker="^", color="green", s=150, label="Buy",
                              zorder=5)
             if not sells.empty:
-                ax_p.scatter(sells["timestamp"], sells["close_1m"], marker="v", color="red", s=100, label="Sell",
+                ax_p.scatter(sells["timestamp"], sells["close_1m"], marker="v", color="red", s=150, label="Sell",
                              zorder=5)
 
         ax_p.set_title(f"Bot Status: {symbol} (Last {lookback} Candles)")
         ax_p.set_ylabel("Price")
-        ax_p.legend(loc="upper left", fontsize='small')
+        ax_p.legend(loc="upper left", fontsize='small', ncol=2)
         ax_p.grid(True, alpha=0.2)
 
-        # --- Subplot 2: Z-Scores (Distance/Exhaustion) ---
-        ax_z.plot(pdf["timestamp"], pdf["z_dist_mean"], label="Z-Mean (SMA)", color="#34495e", lw=1.5)
-        if "z_dist_sup" in pdf.columns:
-            ax_z.plot(pdf["timestamp"], pdf["z_dist_sup"], label="Z-Support", color="#27ae60", ls="--", alpha=0.5)
-        if "z_dist_res" in pdf.columns:
-            ax_z.plot(pdf["timestamp"], pdf["z_dist_res"], label="Z-Resistance", color="#c0392b", ls="--", alpha=0.5)
+        # --- Subplot 2: BBand Distances (Stress Meter) ---
+        if "dist_bb_upper" in pdf.columns and "dist_bb_lower" in pdf.columns:
+            # We clip at 0 so we only see the "breakout" peaks clearly
+            ax_d.fill_between(pdf["timestamp"], pdf["dist_bb_upper"].clip(lower=0), 0,
+                              where=(pdf["dist_bb_upper"] > 0), color="green", alpha=0.4, label="Upper Breakout")
+            ax_d.fill_between(pdf["timestamp"], pdf["dist_bb_lower"].clip(lower=0), 0,
+                              where=(pdf["dist_bb_lower"] > 0), color="red", alpha=0.4, label="Lower Breakout")
 
-        # Thresholds
+            # Optional: faint lines to show the "gap" when inside bands
+            ax_d.plot(pdf["timestamp"], pdf["dist_bb_upper"], color="green", lw=0.5, alpha=0.2)
+            ax_d.plot(pdf["timestamp"], pdf["dist_bb_lower"], color="red", lw=0.5, alpha=0.2)
+
+        ax_d.axhline(0, color="black", lw=1, alpha=0.5)
+        ax_d.set_ylabel("BB Overflow")
+        ax_d.legend(loc="upper left", fontsize='x-small')
+        ax_d.grid(True, alpha=0.2)
+
+        # --- Subplot 3: Z-Scores (Exhaustion) ---
+        ax_z.plot(pdf["timestamp"], pdf["z_dist_mean"], label="Z-Mean", color="#34495e", lw=1.5)
+        if "z_dist_sup" in pdf.columns:
+            ax_z.plot(pdf["timestamp"], pdf["z_dist_sup"], label="Z-Sup", color="#27ae60", ls="--", alpha=0.5)
+        if "z_dist_res" in pdf.columns:
+            ax_z.plot(pdf["timestamp"], pdf["z_dist_res"], label="Z-Res", color="#c0392b", ls="--", alpha=0.5)
+
         ax_z.axhline(0, color="black", lw=1, alpha=0.3)
         ax_z.axhline(2, color="red", ls=":", alpha=0.4)
         ax_z.axhline(-2, color="green", ls=":", alpha=0.4)
-
-        ax_z.set_ylabel("Std Dev (σ)")
-        ax_z.legend(loc="upper left", fontsize='small')
+        ax_z.set_ylabel("Z-Score (σ)")
+        ax_z.legend(loc="upper left", fontsize='x-small')
         ax_z.grid(True, alpha=0.2)
 
-        # --- Subplot 3: Momentum ---
+        # --- Subplot 4: Momentum ---
         mom_col = "macd_hist" if "macd_hist" in pdf.columns else "macd_momentum_change"
         if mom_col in pdf.columns:
             ax_m.plot(pdf["timestamp"], pdf[mom_col], color="#8e44ad", lw=1.2)
@@ -223,7 +255,7 @@ class VisualizationBot:
         ax_m.set_ylabel("Momentum")
         ax_m.grid(True, alpha=0.2)
 
-        # Formatting
+        # Global Formatting
         plt.xticks(rotation=45)
         plt.tight_layout()
 

@@ -2,10 +2,13 @@ import os
 import time
 from datetime import datetime, timedelta
 
+import numpy as np
 import polars as pl
 import requests
 
 from src.core.data_loader import DataLoader
+from src.core.feature_engineering import FeatureEngineering
+from src.models.mean_reversion_trainer import MeanReversionTrainer
 
 
 class KrakenDataLoader(DataLoader):
@@ -209,14 +212,15 @@ if __name__ == "__main__":
     # # Set the initial data
     data_loader.set_initial_data(df_1m=df_1m, df_15m=df_15m)
 
-    df = data_loader.df_context
+    df = data_loader.df_context_train
 
     # Ensure data directory exists
     os.makedirs("../../data", exist_ok=True)
 
     # Save to CSV
     safe_symbol = symbol.replace("/", "_")
-    filename = f"../../data/{safe_symbol}_{lookback_days}d_debug.csv"
+    name = f"{safe_symbol}_{lookback_days}d"
+    filename = f"../../data/{name}_debug.csv"
     df.write_csv(filename)
     print(f"Saved to {filename}")
 
@@ -225,3 +229,25 @@ if __name__ == "__main__":
     data_loader.plot_indicators(df=df, symbol=symbol, filename=f"../../plots/{symbol}_indicators.png")
     data_loader.plot_all(df=df, symbol=symbol, filename=f"../../plots/{symbol}_all.png")
 
+    # 1. Get the train/test context (features calculated on 80% train split)
+    df_train_context = data_loader.df_context_train
+    df_test_context = data_loader.df_context_test
+
+    # # Training logic
+    # trainer = MeanReversionTrainer()
+    #
+    # try:
+    #     model = trainer.train(df_train_context, save_path=f'../../models/{name}.joblib')
+    #
+    #     results = trainer.evaluate(df_test=df_test_context)
+    #
+    #     # results = trainer.evaluate_tick_by_tick(
+    #     #     df_1m_test=data_loader.df_1m_test,
+    #     #     df_15m_test=data_loader.df_15m_test,
+    #     #     feature_engineer=data_loader
+    #     # )
+    #
+    #     print(results)
+    #
+    # except Exception as e:
+    #     print(f"ML Processing failed: {e}")

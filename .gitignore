@@ -211,6 +211,7 @@ __marimo__/
 # Various project folders
 **/data
 **/debug
+/models
 /plots
 /src/live/debug
 /src/live/plots

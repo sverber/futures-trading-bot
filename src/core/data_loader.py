@@ -18,11 +18,16 @@ class DataLoader(FeatureEngineering, ABC):
         self._df_1m_test: pl.DataFrame | None = None
         self._df_15m_train: pl.DataFrame | None = None
         self._df_15m_test: pl.DataFrame | None = None
-        self._df_context: pl.DataFrame | None = None
+        self._df_context_train: pl.DataFrame | None = None
+        self._df_context_test: pl.DataFrame | None = None
 
     @property
-    def df_context(self) -> pl.DataFrame | None:
-        return self._df_context
+    def df_context_train(self) -> pl.DataFrame | None:
+        return self._df_context_train
+
+    @property
+    def df_context_test(self) -> pl.DataFrame | None:
+        return self._df_context_test
 
     @property
     def df_1m_train(self) -> pl.DataFrame | None:
@@ -31,6 +36,14 @@ class DataLoader(FeatureEngineering, ABC):
     @property
     def df_15m_train(self) -> pl.DataFrame | None:
         return self._df_15m_train
+
+    @property
+    def df_1m_test(self) -> pl.DataFrame | None:
+        return self._df_1m_test
+
+    @property
+    def df_15m_test(self) -> pl.DataFrame | None:
+        return self._df_15m_test
 
     def set_initial_data(self, df_1m: pl.DataFrame, df_15m: pl.DataFrame, split: float = 0.8):
         """Sets the starting historical context and splits into train/test sets."""
@@ -55,16 +68,14 @@ class DataLoader(FeatureEngineering, ABC):
         self._df_15m_test = df_15m.filter(pl.col("timestamp") >= split_timestamp)
 
         # 5. Initialize context with the training data
-        self._df_context = self.get_features(df_1m=self._df_1m_train, df_15m=self._df_15m_train)
-
-        # Save to csv
-
+        self._df_context_train = self.get_features(df_1m=self._df_1m_train, df_15m=self._df_15m_train)
+        self._df_context_test = self.get_features(df_1m=self._df_1m_test, df_15m=self._df_15m_test)
 
     def get_tick_data(self, lookback_ticks: int = 100):
         """Yields the updated df_context one tick at a time."""
 
         # Construct the features for the last {n} ticks
-        self._df_context = self.get_features(self._df_1m_test, self._df_15m_test)
-        self._df_context = self.df_context.tail(lookback_ticks)
+        self._df_context_train = self.get_features(self._df_1m_test, self._df_15m_test)
+        self._df_context_train = self.df_context_train.tail(lookback_ticks)
 
-        return self._df_context
+        return self._df_context_train
